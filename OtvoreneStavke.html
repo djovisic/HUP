@@ -1,0 +1,1095 @@
+<html>
+<head>
+<script src="//ajax.googleapis.com/ajax/libs/jquery/1.8.0/jquery.min.js" type="text/javascript"></script>
+<script src="//cdn.datatables.net/1.9.3/js/jquery.dataTables.js" type="text/javascript"></script>
+<script src="//ajax.googleapis.com/ajax/libs/jqueryui/1.8.23/jquery-ui.min.js"></script>
+<script type="text/javascript" src="jquery.gchart.min.js"></script>
+<script type="text/javascript" src="jquery.gchart.icons.min.js"></script>
+<script type="text/javascript" src="accounting.min.js"></script>
+<script type="text/javascript" src="underscore-min.js"></script>
+<script type="text/javascript" src="utilities.js"></script>
+<link rel="stylesheet" href="//ajax.googleapis.com/ajax/libs/jqueryui/1.8.23/themes/cupertino/jquery-ui.css" />
+<meta http-equiv="Access-Control-Allow-Origin" content="*">
+<script type="text/javascript" >
+var financialData;
+var nazivUdruge;
+var udrugeData;
+var sifreUdruga = new Array();
+var dugData;
+var $dialog;
+var companyData = new Array();
+var tvrtkeUniq = new Array();
+var companiesList = new Array();
+// set default currency settings
+accounting.settings = {
+	currency: {
+		symbol : "kn",   // default currency symbol is '$'
+		format: "%v %s", // controls output: %s = symbol, %v = value/number (can be object: see below)
+		decimal : ",",  // decimal point separator
+		thousand: ".",  // thousands separator
+		precision : 2   // decimal places
+	},
+	number: {
+		precision : 2,  // default precision on numbers is 0
+		thousand: ".",
+		decimal : ","
+	}
+}
+
+
+
+// dohvati sve aktivne granske udruge i pozovi fillDropdown metodu
+$(document).ready(function() {	
+			$("#opomene").hide();
+			$("#printIOS").hide();
+			$("#cancel").hide();
+			var korisnik = decodeURI(gup('korisnik'));
+			korisnik = korisnik.replace('A!','š');
+			var textArea = document.getElementById("text");
+			textArea.value +=  korisnik;
+			$dialog = $('<div></div>')
+			.html('Molimo vas da budete strpljivi dok se financijski podaci u&#269;itaju. Dohvat podataka mo&#382;e potrajati i ovisi o koli&#269;ini podataka i brzini va&#353;e Internet veze. Prozor &#263;e sam ugasiti nakon &#353;to se podaci u&#269;itaju.')
+			.dialog({autoOpen: false, title: 'U&#269;itavam podatke...',modal: true, position: 'top' });			
+			$dialog.dialog('open');
+		
+			$.ajaxSetup({ scriptCharset: "utf-8" , contentType: "application/json; charset=utf-8"});
+			$.getScript("//creatorexport.zoho.com/hupadmin/baza/json/Granske_udruge/udruga_aktivna=true&callback=fillDropdown",function(data){});		
+	} );
+
+
+// napuni dropdown udruge, zatim dohvati sve financijske podatke i pozovi metodu GetFinancialData
+function fillDropdown(data)
+{
+	udrugeData = data["Granska_udruga"];
+	// fill udruge dropdown
+	for (var i = 0; i < udrugeData.length; i++){
+		var sifra = udrugeData[i]["sifra_udruge"];
+		if (sifra.charAt(0) == '0') sifra = sifra.substr(1,sifra.length-1);	
+		$('#udruge').append('<option value="' +  sifra + '">' + udrugeData[i]["naziv"] + '</option>');
+		sifreUdruga[i] = sifra;
+	}
+
+	$.getScript("//creatorexport.zoho.com/hupadmin/baza/json/Financije_dashboard/otvorena_stavka=Da" + "&callback=GetFinancialData",function(data2){});
+}
+	
+// dohvati financijske podatke za koje nemamo OIB (povezane s firmom preko MB-a) i pozovi fillCompanyNames	
+function  GetFinancialData(data2)
+{
+	financialData = data2["Financije"];	
+	for (var i = 0; i < financialData.length; i++){ 
+		var v = financialData[i]["OIB.naziv"];
+		var k = "naziv";
+		delete financialData[i]["OIB.naziv"];
+        financialData[i][k] = v;
+		
+	} 
+	$.getScript("//creatorexport.zoho.com/hupadmin/baza/json/Financije_dashboard_MB/otvorena_stavka=Da" + "&callback=fillCompanyNames",function(data3){});
+	
+
+}
+
+function udrugaToSifra(naziv)
+{
+	for (var i = 0; i < udrugeData.length; i++){
+		if(udrugeData[i]["naziv"] == naziv) return udrugeData[i]["sifra_udruge"];
+	}
+}	
+
+// napravi merge ova dva seta te pozovi metode za punjenje tablica i grafova	
+function fillCompanyNames(data3)
+{
+	var financialData2 = data3["Financije"];
+	for (var i = 0; i < financialData2.length; i++){ 
+		var v = financialData2[i]["MB.naziv"];
+		var k = "naziv";
+		delete financialData2[i]["MB.naziv"];
+		
+		financialData2[i][k] = v;
+		
+	} 
+	var companies = new Array();
+	var companyList = new Array();
+	var data4 = new Array();
+
+	for (var i = 0; i < financialData2.length; i++){ 
+		if(financialData2[i]["MB"] != "" && financialData2[i]["OIB"] == "") companies[i] = financialData2[i]["MB"];
+	} 
+ 
+	companyList = _.uniq(companies);
+
+	for (var i = 0; i < companyList.length; i++){ 
+	
+		for (var j = 0; j < financialData2.length; j++){ 
+			if(financialData2[j]["MB"] == companyList[i])
+			{
+				data4[i] = new Array(5);
+				data4[i][0] = financialData2[j]["naziv"];
+				data4[i][1] = financialData2[j]["MB"];
+				data4[i][2] = financialData2[j]["status"];
+				data4[i][3] = financialData2[j]["udruga"];
+				break;
+			}			
+		} 	
+	} 
+	
+	for (var i = 0; i < financialData.length; i++){ 
+		if( financialData[i]["naziv"] == "")
+		{
+				for (var j = 0; j < data4.length; j++){ 
+					if(financialData[i]["MB"] == data4[j][1])
+					{
+						financialData[i]["naziv"] = data4[j][0];
+						financialData[i]["status"] = data4[j][2];
+						financialData[i]["udruga"] = data4[j][3];
+						break;
+					}
+				} 
+		}
+	}
+	
+	$.getScript("//creatorexport.zoho.com/hupadmin/baza/json/Svi_podaci_o_tvrtkama/&callback=fillData",function(data4){});
+}
+
+function fillData(data4)
+{	
+
+	companyData = data4["Tvrtka"];
+	var popisTvrtki = new Array();
+	for(var i = 0; i< financialData.length; i++)
+	{
+	if(financialData[i]["OIB"] != "") popisTvrtki.push(financialData[i]["OIB"]);
+	else if(financialData[i]["MB"] != "") popisTvrtki.push(financialData[i]["MB"]);
+	}
+	tvrtkeUniq = _.uniq(popisTvrtki);
+
+	var counter = 0;
+	for (var i=0;i < companyData.length; i++)
+	{		
+		var index = _.indexOf(tvrtkeUniq,companyData[i]["oib"]);
+		var index2 = _.indexOf(tvrtkeUniq,companyData[i]["mb"]);
+
+		// if the company is member of udruga and is active member		
+		if (index != -1  || index2 != -1) { 
+			var finDataExists = false;
+			//check if there is some financial data for the company
+			 
+			for (var j=0; j<financialData.length; j++)
+			{
+				if ((financialData[j]["OIB"] == companyData[i]["oib"] || financialData[j]["MB"] == companyData[i]["mb"]) && financialData[j]["naziv"] == companyData[i]["naziv"]) { finDataExists = true; break;}
+			}
+			if (finDataExists)
+			{
+			var details = new Array(3);
+			details[0] = companyData[i]["naziv"];
+			if (companyData[i]["oib"] != "") details[1] = companyData[i]["oib"];
+			else if (companyData[i]["mb"] != "") details[1] = companyData[i]["mb"];
+			details[2] = udrugaToSifra(companyData[i]["udruga"]);
+			companiesList.push(details);
+			counter++; 
+			}
+		}
+
+
+	}
+	console.log(counter);
+
+	companiesList.sort(function(a,b) {
+
+		a = a[0];
+		b = b[0];
+		return a == b ? 0 : (a < b ? -1 : 1)
+
+	});
+	companiesList.sort();
+	
+	
+	for (var i=0; i < companiesList.length; i++)
+	{
+
+		var html = "<option value='" + companiesList[i][1] + "'>" + companiesList[i][0] + "</option>"
+		$("#tvrtke").append(html);
+	}
+	
+	
+	createFinancialDataTable();
+}
+
+function createFinancialDataTable()
+{
+	// formatdata
+	for (var i = 0; i < financialData.length; i++){ 
+		financialData[i]["dug"] = accounting.formatMoney(financialData[i]["dug"]);
+		financialData[i]["pot"] = accounting.formatMoney(financialData[i]["pot"]);
+		if(financialData[i]["naziv"] == "") financialData.splice(i,1);
+	} 	
+	
+	$('#dynamic').html( '<table cellpadding="0"  width="100%" cellspacing="0" border="0" id="data" style="font: 12px Arial, Helvetica, Sans-Serif;"><tfoot><tr><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th></tr></tfoot></table>' );
+	var oTable = $('#data').dataTable({
+		"bJQueryUI": true,
+		"bFilter": true,
+		"aaData": financialData,
+		"bInfo":true,
+		"iDisplayLength": 20,
+		"aaSorting": [[ 0, "asc" ]],
+		"bLengthChange": false,
+		"sDom": '<"H"<"title2">f>t<"F"ip>',
+		"oLanguage": {
+			"sInfo": "Prikaz  _START_ do _END_ od _TOTAL_ zapisa",
+			"sZeroRecords": "Nema podataka",
+			"sInfoEmpty": "Prikaz 0 do 0 od 0 zapisa",
+			"sInfoFiltered": " - filtirano od _MAX_ zapisa",
+			"sSearch": "Filtriraj zapise:"
+		},
+
+		"aoColumns":[
+				
+				{ "mDataProp":"naziv","sTitle":"Tvrtka","sWidth":"200px"},
+				{ "mDataProp":"dok_vrsta","sTitle":"Vrsta dokumenta" },
+				{ "mDataProp":"dok_broj","sTitle":"Broj dokumenta"},
+				{ "mDataProp":"dat_dok","sTitle":"Datum dokumenta","sType":"datum","sSortDataType": "dom-text"},
+				{ "mDataProp":"dat_dosp","sTitle":"Datum dospije&#263;a","sType":"datum","sSortDataType": "dom-text"},
+				{ "mDataProp":"vdok_vrsta","sTitle":"Vrsta veznog dokumenta"},
+				{ "mDataProp":"vdok_broj","sTitle":"Broj veznog dokumenta"},
+				{ "mDataProp":"dug","sTitle":"Dugovanje","sType": "currency","sSortDataType": "dom-text"},
+				{ "mDataProp":"pot","sTitle":"Uplata","sType": "currency","sSortDataType": "dom-text"},			
+				{ "mDataProp":"custom","sTitle":"Custom","sType": "string","bVisible":true}
+				]
+
+
+		});	
+		$("div.title2").html('<b>Pregled otvorenih stavki</b>');
+		
+		var oSettings = oTable.fnSettings(); 
+		 $("tfoot th").each( function ( i ) {
+				if(i == 9) {
+				this.innerHTML = fnCreateSelect( oTable.fnGetColumnData(oSettings.aoColumns[i].mDataProp) );
+				$('select', this).change( function () {
+					oTable.fnFilter( $(this).val(), i );
+				} );}
+			} );
+		$dialog.dialog('close');
+		
+}
+
+
+// event handler metode
+function changeUdruga(udruge)
+{
+	// clear tvrtke
+	var tvrtke = document.getElementById("tvrtke");
+
+	$('#tvrtke').html('');
+
+	var value = udruge.options[udruge.selectedIndex].value;
+	if(value != "sve")
+	{
+		// fill tvrtke		
+		fillTvrtke();
+		// remove those who are not memeber of udruga
+		var counter = 0;
+		for (var i=0; i < companiesList.length; i++)
+		{
+			if(companiesList[i][2] != parseInt(value))
+			{				
+				//console.log("value: " + value);
+				for (var j = 0; j < tvrtke.options.length; j++)
+				{
+				if (tvrtke.options[j].value == companiesList[i][1]) $("#tvrtke option[value='" + tvrtke.options[ j ].value + "']").detach();
+				}
+			}
+			else counter ++;
+		}
+	}
+	else
+	{
+		fillTvrtke();
+	}
+					/*for (var j = 0; j < tvrtke.options.length; j++)
+				{
+				console.log(tvrtke.options[j].text);
+				}*/
+	console.log(tvrtke.options.length);
+}
+
+function showTable()
+{
+	$("#opomene").show();
+	$("#printIOS").show();
+	$("#dynamic").hide();
+	$("#cancel").show();
+	$("#pripremi").hide();
+}
+
+function cancel()
+{
+	$("#opomene").hide();
+	$("#printIOS").hide();
+	$("#dynamic").show();
+	$("#cancel").hide();
+	$("#pripremi").show();
+}
+
+function printIOS()
+{
+	console.log(escape("Darko Jovišiæ"));
+	var text = escape(document.getElementById("text").value);
+	var udruga = udruge.options[udruge.selectedIndex].value;
+	var nazivUdruge = udruge.options[udruge.selectedIndex].text;
+	var sifraUdruge = udruge.options[udruge.selectedIndex].value;
+	var arSelected = getMultiple(document.getElementById("tvrtke"));
+	// pozovi za sve tvrtke
+	if(udruga == "sve" && arSelected.length == 0)
+	{
+		window.open("https:Print.html?svi=Da&text=" + text);	
+	}	
+	// pozovi za cijelu udrugu	
+	else if(udruga != "sve" && arSelected.length == 0)
+	{
+		window.open("https:Print.html?udruga=" + encodeURI(nazivUdruge) + "&custom=0" + sifraUdruge +"&text=" + text);
+	}
+	// pozovi za odabrane tvrtke
+	else if(arSelected.length > 0)
+	{
+		var oib = "";
+		var mb = "";
+		for (var i = 0; i < arSelected.length; i++ )
+		{
+			if(i == arSelected.length-1)
+			{
+				if(arSelected[i].length == 11) oib += arSelected[i];
+				else mb += arSelected[i];
+			}			
+			else 
+			{
+			if(arSelected[i].length == 11) oib += arSelected[i] + ",";
+			else mb += arSelected[i] + ",";
+			}
+		}
+
+		if(mb == "") window.open("https:Print.html?oib=" + oib + "&text=" + text);
+		else if (oib == "") window.open("https:Print.html?mb=" + mb + "&text=" + text);
+		else
+		{
+			if(mb.charAt(mb.length-1) == ",") mb = mb.substring(0,mb.length-1);
+			if(oib.charAt(oib.length-1) == ",") oib = oib.substring(0,oib.length-1);
+			window.open("https:Print.html?oib=" + oib + "&mb=" + mb + "&text=" + text);
+		}
+	}
+}
+
+function getMultiple(ob)
+{
+	var selected = new Array();
+	for (var i = 0; i < ob.options.length; i++)
+	{
+    if (ob.options[ i ].selected) selected.push(ob.options[ i ].value);
+	}
+    return selected;
+}
+
+function fillTvrtke()
+{
+	for (var i=0; i < companiesList.length; i++)
+	{
+		var html = "<option value='" + companiesList[i][1] + "'>" + companiesList[i][0] + "</option>"
+		$("#tvrtke").append(html);
+	}
+}
+
+(function($) {
+/*
+ * Function: fnGetColumnData
+ * Purpose:  Return an array of table values from a particular column.
+ * Returns:  array string: 1d data array
+ * Inputs:   object:oSettings - dataTable settings object. This is always the last argument past to the function
+ *           int:iColumn - the id of the column to extract the data from
+ *           bool:bUnique - optional - if set to false duplicated values are not filtered out
+ *           bool:bFiltered - optional - if set to false all the table data is used (not only the filtered)
+ *           bool:bIgnoreEmpty - optional - if set to false empty values are not filtered from the result array
+ * Author:   Benedikt Forchhammer <b.forchhammer /AT\ mind2.de>
+ */
+$.fn.dataTableExt.oApi.fnGetColumnData = function ( oSettings, iColumn, bUnique, bFiltered, bIgnoreEmpty ) {
+    // check that we have a column id
+    if ( typeof iColumn == "undefined" ) return new Array();
+     
+    // by default we only want unique data
+    if ( typeof bUnique == "undefined" ) bUnique = true;
+     
+    // by default we do want to only look at filtered data
+    if ( typeof bFiltered == "undefined" ) bFiltered = true;
+     
+    // by default we do not want to include empty values
+    if ( typeof bIgnoreEmpty == "undefined" ) bIgnoreEmpty = true;
+     
+    // list of rows which we're going to loop through
+    var aiRows;
+     
+    // use only filtered rows
+    if (bFiltered == true) aiRows = oSettings.aiDisplay;
+    // use all rows
+    else aiRows = oSettings.aiDisplayMaster; // all row numbers
+ 
+    // set up data array   
+    var asResultData = new Array();
+    for (var i=0,c=aiRows.length; i<c; i++) {
+        iRow = aiRows[i];		
+        var aData = this.fnGetData(iRow);
+        var sValue = aData[iColumn];
+         
+        // ignore empty values?
+        if (bIgnoreEmpty == true && sValue.length == 0) continue;
+ 
+        // ignore unique values?
+        else if (bUnique == true && jQuery.inArray(sValue, asResultData) > -1) continue;
+         
+        // else push the value onto the result data array
+        else asResultData.push(sValue);
+    }
+     
+    return asResultData.sort();
+}}(jQuery));
+ 
+ 
+function fnCreateSelect( aData )
+{
+    var r='<select><option value=""></option>', i, iLen=aData.length;
+    for ( i=0 ; i<iLen ; i++ )
+    {
+        r += '<option value="'+aData[i]+'">'+aData[i]+'</option>';
+    }
+    return r+'</select>';
+}
+ 
+ 
+
+</script>
+<style>
+.ui-widget-overlay {
+    background: black;
+    filter: alpha(opacity = 50);
+    left: 0;
+    opacity: 0.5;
+    position: absolute;
+    top: 0;
+}
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * General page setup
+ */
+#dt_example {
+	font: 13px "Lucida Grande", Verdana, Arial, Helvetica, sans-serif;
+	margin: 0;
+	padding: 0;
+	color: #333;
+	background-color: #fff;
+}
+
+
+#dt_example #container {
+	width: 800px;
+	margin: 30px auto;
+	padding: 0;
+}
+
+
+#dt_example #footer {
+	margin: 50px auto 0 auto;
+	padding: 0;
+}
+
+#dt_example #demo {
+	margin: 30px auto 0 auto;
+}
+
+#dt_example .demo_jui {
+	margin: 30px auto 0 auto;
+}
+
+#dt_example .big {
+	font-size: 1.3em;
+	font-weight: bold;
+	line-height: 1.6em;
+	color: #4E6CA3;
+}
+
+#dt_example .spacer {
+	height: 20px;
+	clear: both;
+}
+
+#dt_example .clear {
+	clear: both;
+}
+
+#dt_example pre {
+	padding: 15px;
+	background-color: #F5F5F5;
+	border: 1px solid #CCCCCC;
+}
+
+#dt_example h1 {
+	margin-top: 2em;
+	font-size: 1.3em;
+	font-weight: normal;
+	line-height: 1.6em;
+	color: #4E6CA3;
+	border-bottom: 1px solid #B0BED9;
+	clear: both;
+}
+
+#dt_example h2 {
+	font-size: 1.2em;
+	font-weight: normal;
+	line-height: 1.6em;
+	color: #4E6CA3;
+	clear: both;
+}
+
+#dt_example a {
+	color: #0063DC;
+	text-decoration: none;
+}
+
+#dt_example a:hover {
+	text-decoration: underline;
+}
+
+#dt_example ul {
+	color: #4E6CA3;
+}
+
+.css_right {
+	float: right;
+}
+
+.css_left {
+	float: left;
+}
+
+.demo_links {
+	float: left;
+	width: 50%;
+	margin-bottom: 1em;
+}
+
+#demo_info {
+	padding: 5px;
+	border: 1px solid #B0BED9;
+	height: 100px;
+	width: 100%;
+	overflow: auto;
+}
+.paging_two_button .ui-button {
+	float: left;
+	cursor: pointer;
+	* cursor: hand;
+}
+
+.paging_full_numbers .ui-button {
+	padding: 2px 6px;
+	margin: 0;
+	cursor: pointer;
+	* cursor: hand;
+	color: #333 !important;
+}
+
+.dataTables_paginate .ui-button {
+	margin-right: -0.1em !important;
+}
+
+.paging_full_numbers {
+	width: 350px !important;
+}
+
+.dataTables_wrapper .ui-toolbar {
+	padding: 5px;
+}
+
+.dataTables_paginate {
+	width: auto;
+}
+
+.dataTables_info {
+	padding-top: 3px;
+}
+
+table.display thead th {
+	padding: 3px 0px 3px 10px;
+	cursor: pointer;
+	* cursor: hand;
+}
+
+div.dataTables_wrapper .ui-widget-header {
+	font-weight: normal;
+}
+
+
+/*
+ * Sort arrow icon positioning
+ */
+table.display thead th div.DataTables_sort_wrapper {
+	position: relative;
+	padding-right: 20px;
+}
+
+table.display thead th div.DataTables_sort_wrapper span {
+	position: absolute;
+	top: 50%;
+	margin-top: -8px;
+	right: 0;
+}
+
+
+
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * Everything below this line is the same as demo_table.css. This file is
+ * required for 'cleanliness' of the markup
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * DataTables features
+ */
+
+.dataTables_wrapper {
+	position: relative;
+	clear: both;
+}
+
+.dataTables_processing {
+	position: absolute;
+	top: 0px;
+	left: 50%;
+	width: 250px;
+	margin-left: -125px;
+	border: 1px solid #ddd;
+	text-align: center;
+	color: #999;
+	font-size: 11px;
+	padding: 2px 0;
+}
+
+.dataTables_length {
+	width: 40%;
+	float: left;
+}
+
+.dataTables_filter {
+	width: 50%;
+	float: right;
+	text-align: right;
+}
+
+.dataTables_info {
+	width: 50%;
+	float: left;
+}
+
+.dataTables_paginate {
+	float: right;
+	text-align: right;
+}
+
+
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * DataTables display
+ */
+table.display {
+	margin: 0 auto;
+	width: 100%;
+	clear: both;
+	border-collapse: collapse;
+}
+
+table.display tfoot th {
+	padding: 3px 0px 3px 10px;
+	font-weight: bold;
+	font-weight: normal;
+}
+
+table.display tr.heading2 td {
+	border-bottom: 1px solid #aaa;
+}
+
+table.display td {
+	padding: 3px 10px;
+}
+
+table.display td.center {
+	text-align: center;
+}
+
+
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * DataTables sorting
+ */
+
+.sorting_asc {
+	background: url('../images/sort_asc.png') no-repeat center right;
+}
+
+.sorting_desc {
+	background: url('../images/sort_desc.png') no-repeat center right;
+}
+
+.sorting {
+	background: url('../images/sort_both.png') no-repeat center right;
+}
+
+.sorting_asc_disabled {
+	background: url('../images/sort_asc_disabled.png') no-repeat center right;
+}
+
+.sorting_desc_disabled {
+	background: url('../images/sort_desc_disabled.png') no-repeat center right;
+}
+
+
+
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * DataTables row classes
+ */
+table.display tr.odd.gradeA {
+	background-color: #ddffdd;
+}
+
+table.display tr.even.gradeA {
+	background-color: #eeffee;
+}
+
+
+
+
+table.display tr.odd.gradeA {
+	background-color: #ddffdd;
+}
+
+table.display tr.even.gradeA {
+	background-color: #eeffee;
+}
+
+table.display tr.odd.gradeC {
+	background-color: #ddddff;
+}
+
+table.display tr.even.gradeC {
+	background-color: #eeeeff;
+}
+
+table.display tr.odd.gradeX {
+	background-color: #ffdddd;
+}
+
+table.display tr.even.gradeX {
+	background-color: #ffeeee;
+}
+
+table.display tr.odd.gradeU {
+	background-color: #ddd;
+}
+
+table.display tr.even.gradeU {
+	background-color: #eee;
+}
+
+
+tr.odd {
+	background-color: #E2E4FF;
+}
+
+tr.even {
+	background-color: white;
+}
+
+
+
+
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * Misc
+ */
+.dataTables_scroll {
+	clear: both;
+}
+
+.dataTables_scrollBody {
+	-webkit-overflow-scrolling: touch;
+}
+
+.top, .bottom {
+	padding: 15px;
+	background-color: #F5F5F5;
+	border: 1px solid #CCCCCC;
+}
+
+.top .dataTables_info {
+	float: none;
+}
+
+.clear {
+	clear: both;
+}
+
+.dataTables_empty {
+	text-align: center;
+}
+
+tfoot input {
+	margin: 0.5em 0;
+	width: 100%;
+	color: #444;
+}
+
+tfoot input.search_init {
+	color: #999;
+}
+
+td.group {
+	background-color: #d1cfd0;
+	border-bottom: 2px solid #A19B9E;
+	border-top: 2px solid #A19B9E;
+}
+
+td.details {
+	background-color: #d1cfd0;
+	border: 2px solid #A19B9E;
+}
+
+
+.example_alt_pagination div.dataTables_info {
+	width: 40%;
+}
+
+.paging_full_numbers a.paginate_button,
+ 	.paging_full_numbers a.paginate_active {
+	border: 1px solid #aaa;
+	-webkit-border-radius: 5px;
+	-moz-border-radius: 5px;
+	padding: 2px 5px;
+	margin: 0 3px;
+	cursor: pointer;
+	*cursor: hand;
+	color: #333 !important;
+}
+
+.paging_full_numbers a.paginate_button {
+	background-color: #ddd;
+}
+
+.paging_full_numbers a.paginate_button:hover {
+	background-color: #ccc;
+	text-decoration: none !important;
+}
+
+.paging_full_numbers a.paginate_active {
+	background-color: #99B3FF;
+}
+
+table.display tr.even.row_selected td {
+	background-color: #B0BED9;
+}
+
+table.display tr.odd.row_selected td {
+	background-color: #9FAFD1;
+}
+
+
+/*
+ * Sorting classes for columns
+ */
+/* For the standard odd/even */
+tr.odd td.sorting_1 {
+	background-color: #D3D6FF;
+}
+
+tr.odd td.sorting_2 {
+	background-color: #DADCFF;
+}
+
+tr.odd td.sorting_3 {
+	background-color: #E0E2FF;
+}
+
+tr.even td.sorting_1 {
+	background-color: #EAEBFF;
+}
+
+tr.even td.sorting_2 {
+	background-color: #F2F3FF;
+}
+
+tr.even td.sorting_3 {
+	background-color: #F9F9FF;
+}
+
+
+/* For the Conditional-CSS grading rows */
+/*
+ 	Colour calculations (based off the main row colours)
+  Level 1:
+		dd > c4
+		ee > d5
+	Level 2:
+	  dd > d1
+	  ee > e2
+ */
+tr.odd.gradeA td.sorting_1 {
+	background-color: #c4ffc4;
+}
+
+tr.odd.gradeA td.sorting_2 {
+	background-color: #d1ffd1;
+}
+
+tr.odd.gradeA td.sorting_3 {
+	background-color: #d1ffd1;
+}
+
+tr.even.gradeA td.sorting_1 {
+	background-color: #d5ffd5;
+}
+
+tr.even.gradeA td.sorting_2 {
+	background-color: #e2ffe2;
+}
+
+tr.even.gradeA td.sorting_3 {
+	background-color: #e2ffe2;
+}
+
+tr.odd.gradeC td.sorting_1 {
+	background-color: #c4c4ff;
+}
+
+tr.odd.gradeC td.sorting_2 {
+	background-color: #d1d1ff;
+}
+
+tr.odd.gradeC td.sorting_3 {
+	background-color: #d1d1ff;
+}
+
+tr.even.gradeC td.sorting_1 {
+	background-color: #d5d5ff;
+}
+
+tr.even.gradeC td.sorting_2 {
+	background-color: #e2e2ff;
+}
+
+tr.even.gradeC td.sorting_3 {
+	background-color: #e2e2ff;
+}
+
+tr.odd.gradeX td.sorting_1 {
+	background-color: #ffc4c4;
+}
+
+tr.odd.gradeX td.sorting_2 {
+	background-color: #ffd1d1;
+}
+
+tr.odd.gradeX td.sorting_3 {
+	background-color: #ffd1d1;
+}
+
+tr.even.gradeX td.sorting_1 {
+	background-color: #ffd5d5;
+}
+
+tr.even.gradeX td.sorting_2 {
+	background-color: #ffe2e2;
+}
+
+tr.even.gradeX td.sorting_3 {
+	background-color: #ffe2e2;
+}
+
+tr.odd.gradeU td.sorting_1 {
+	background-color: #c4c4c4;
+}
+
+tr.odd.gradeU td.sorting_2 {
+	background-color: #d1d1d1;
+}
+
+tr.odd.gradeU td.sorting_3 {
+	background-color: #d1d1d1;
+}
+
+tr.even.gradeU td.sorting_1 {
+	background-color: #d5d5d5;
+}
+
+tr.even.gradeU td.sorting_2 {
+	background-color: #e2e2e2;
+}
+
+tr.even.gradeU td.sorting_3 {
+	background-color: #e2e2e2;
+}
+
+
+/*
+ * Row highlighting example
+ */
+.ex_highlight #example tbody tr.even:hover, #example tbody tr.even td.highlighted {
+	background-color: #ECFFB3;
+}
+
+.ex_highlight #example tbody tr.odd:hover, #example tbody tr.odd td.highlighted {
+	background-color: #E6FF99;
+}
+
+</style>
+
+</head>
+<body id="dt_example" style="background-color:#F3F0EB;">
+<table style="width:1000">
+	<tr>
+		<td style="font-weight:bold;text-align:center;padding-bottom:20px;"><div id="naslov">Pregled otvorenih stavki</div></td>
+	</tr>
+</table>
+<table style="width:1000">
+		<td style="padding-bottom:20px">
+			<input id="pripremi" onclick="showTable()" type="button" value="Pripremi opomene">
+			<input id="printIOS" onclick="printIOS()" type="button" value="Generiraj opomene">
+			<input id="cancel" onclick="cancel()" type="button" value="Odustani">
+		</td>
+</table>
+<table id="opomene" style="width:1000">
+	<td style="padding-bottom:20px;font-weight:bold">Generiranje dokumenta otvorenih stavki</td>
+	<tr><td  style="padding-bottom:20px;">Udruga: <select id="udruge" name="udruge" style="width:100%" onchange="changeUdruga(this)"><option value="sve">Sve udruge</option></select></td></tr>
+	<tr><td style="padding-bottom:20px;" valign="top">Tvrtke: <select id="tvrtke" style="width:100%" multiple="multiple" size="10"></select></td></tr>
+	<tr><td  style="margin-top:20px;padding-bottom:20px;">Tekst opomene:<br/>
+	<textarea id="text" rows="20" style="width:100%">
+Poštovani, 
+
+Uvidom u knjigu otvorenih stavaka utvrdii smo da Vaše poduze&#263;e nije podmirilo obvezu pla&#263;anja &#269;lanarine HUP-u u gore navedenom iznosu. 
+
+Vjeruju&#263;i kako je nepla&#263;eni dug promakao Vašoj pažnji, ovim putem ljubazno molimo hitno podmirenje istoga na IBAN: HR9223400091100151718
+
+Ukoliko ste dugovanje u me&#273;uvremenu podmirili, smatrajte ovu opomenu nevaže&#263;om. 
+
+S poštovanjem,
+</textarea></td></tr>
+</table>	
+<table  style="width:1000">
+	<tr>
+		<td><div id="dynamic"></td>
+	</tr>
+</table>
+</body>
+<script type="text/javascript" >
+
+
+
+</script>
+<html>

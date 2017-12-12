@@ -1,0 +1,254 @@
+<html>
+<head>
+<script src="//ajax.googleapis.com/ajax/libs/jquery/1.8.0/jquery.min.js" type="text/javascript"></script>
+<script src="//ajax.googleapis.com/ajax/libs/jqueryui/1.8.23/jquery-ui.min.js"></script>
+<script type="text/javascript" src="accounting.min.js"></script>
+<script type="text/javascript" src="underscore-min.js"></script>
+<meta http-equiv="Access-Control-Allow-Origin" content="*">
+<style>
+body
+{
+    font-family:Verdana;font-size: 12px;   
+}
+
+*.stavke td
+{
+    padding-right:10px;   
+}
+
+.company
+{
+margin-left:65px;
+margin-top:20px;
+margin-bottom:50px;
+}
+
+table
+{
+    font-family:Verdana;font-size: 12px; 
+}
+
+</style>
+<script type="text/javascript" >
+accounting.settings = {
+	currency: {
+		symbol : "kn",   // default currency symbol is '$'
+		format: "%v %s", // controls output: %s = symbol, %v = value/number (can be object: see below)
+		decimal : ",",  // decimal point separator
+		thousand: ".",  // thousands separator
+		precision : 2   // decimal places
+	},
+	number: {
+		precision : 2,  // default precision on numbers is 0
+		thousand: ".",
+		decimal : ","
+	}
+}
+
+var udruga = gup( 'udruga' );
+var svi = gup( 'svi' );
+//alert(udruga);
+var oib = gup('oib');
+var mb = gup('mb');
+var custom = gup('custom');
+var text = gup('text');
+if(text != "") text = nl2br(text);
+var oibi; 
+if(oib != "") oibi = oib.split(",");
+var mbovi; 
+if(mb != "") mbovi = mb.split(",");
+
+var financialData;
+var companyData;
+var tvrtkeUniq = new Array();
+
+$.ajaxSetup({ scriptCharset: "utf-8" , contentType: "application/json; charset=utf-8"});
+
+if(udruga != "") { $.getScript("//creatorexport.zoho.com/hupadmin/baza/json/Financije_dashboard/otvorena_stavka=Da&custom=" + custom  + "&callback=myCallBack",function(data){});		}
+else { $.getScript("//creatorexport.zoho.com/hupadmin/baza/json/Financije_dashboard/otvorena_stavka=Da&callback=myCallBack",function(data){});		}
+
+
+function myCallBack(data)
+{
+financialData = data["Financije"];
+var tvrtke = new Array();
+for (var i = 0; i < financialData.length; i++){ 
+		var v = financialData[i]["OIB.naziv"];
+		var k = "naziv";
+		delete financialData[i]["OIB.naziv"];
+        financialData[i][k] = v;
+		
+} 
+for(var i = 0; i< financialData.length; i++)
+{
+	if(financialData[i]["OIB"] != "") tvrtke.push(financialData[i]["OIB"]);
+	else if(financialData[i]["MB"] != "") tvrtke.push(financialData[i]["MB"]);
+}
+tvrtkeUniq = _.uniq(tvrtke);
+
+
+
+if(svi == "Da")
+{
+$.getScript("//creatorexport.zoho.com/hupadmin/baza/json/Svi_podaci_o_tvrtkama/&callback=myCallBack3",function(data3){});
+}
+else if( udruga != "")
+{
+
+$.getScript("//creatorexport.zoho.com/hupadmin/baza/json/Svi_podaci_o_tvrtkama/udruga=" + udruga + "&callback=myCallBack3",function(data3){});
+}
+else if(oib != "" || mb != "")
+{
+	if (oib != "")
+	{
+		for (var i=0;i < oibi.length; i++)
+		{
+		$.getScript("//creatorexport.zoho.com/hupadmin/baza/json/Svi_podaci_o_tvrtkama/oib=" + oibi[i] + "&callback=myCallBack2",function(data2){});
+		}
+	}
+	if(mb != "")
+	{
+		for (var i=0;i < mbovi.length; i++)
+		{
+		$.getScript("//creatorexport.zoho.com/hupadmin/baza/json/Svi_podaci_o_tvrtkama/mb=" + mbovi[i] + "&callback=myCallBack2",function(data2){});
+		}
+	}
+}
+}
+
+function myCallBack2(data2)
+{
+companyData = data2["Tvrtka"];
+writeIOS(0);
+}
+
+function myCallBack3(data3)
+{
+companyData = data3["Tvrtka"];
+
+
+	var counter = 0;	
+	for (var i=0;i < companyData.length; i++)
+	{		
+		var index = _.indexOf(tvrtkeUniq,companyData[i]["oib"]);
+		var index2 = _.indexOf(tvrtkeUniq,companyData[i]["mb"]);
+		// if the company is member of udruga and is active member
+		if (index != -1  || index2 != -1) { 
+			var finDataExists = false;
+			//check if there is some financial data for the company
+			 
+			for (var j=0; j<financialData.length; j++)
+			{
+				if(financialData[j]["OIB"] == companyData[i]["oib"] && companyData[i]["oib"] != "") { finDataExists = true; break;}
+				else if(financialData[j]["MB"] == companyData[i]["mb"] && companyData[i]["mb"] != "") { finDataExists = true; break;}
+			}
+			if (finDataExists)
+			{
+				writeIOS(i); 
+				counter++; 
+			}
+		}
+	}
+	console.log(counter);
+}
+
+
+
+function writeIOS(i)
+{
+var imeTvrtke = companyData[i]["naziv"];
+var sjediste = companyData[i]["sjediste_pbr"] + " " + companyData[i]["sjediste"];
+var adresa = companyData[i]["sjediste_adresa"];
+var oib = "OIB: " + companyData[i]["oib"];
+
+var hupinfo = "<table style='font-weight:bold;'><tr><td rowspan='5' valign='top' style='padding-right:10px;'><img src='huplogo2.png' /></td></tr><tr><td>HRVATSKA UDRUGA POSLODAVACA</td></tr><tr><td>MB: 00410128</td></tr><tr><td>Radni&#269;ka cesta 52</td></tr><tr><td>OIB: 80978339255</td></tr></table>";
+var title = "<div style='height:20px;margin-top:20px;margin-bottom:20px;'></div><div style='font-size:16px;text-align:center;font-weight:bold;'>IZVOD OTVORENIH STAVAKA</div>";
+var today = new Date();
+var month = today.getMonth()+1;
+var datum = "Zagreb, " + today.getDate() + "." + month  + "." + today.getFullYear();
+//var datum = "<div style='width:100%;'><p style='text-align:right;'>Zagreb, " + datumString +  "</p></div>";
+var companyinfo = "<table style='margin-left:65px;margin-top:20px;margin-bottom:50px;text-align:left;width:100%'><tr><td style='width:60%'>" + imeTvrtke + "</td><td style='text-align:right;padding-right:100px'>" + datum + "</td></tr><tr><td colspan='2'>" + sjediste + "</td></tr><tr><td colspan='2'>" + adresa + "</td></tr><tr><td colspan='2'>" + oib + "</td></tr></table>";
+var iostable = "";
+var footer = "<p>Hrvatska udruga poslodavaca <br />Croatian Employers' Association <br />Radnièka cesta 52 - 10000 Zagreb Croatia<br /></p><p><table style='page-break-after:always;'><tr><td>Tel +385 1 4897 557</td><td>Mail: milka.kosanovic@hup.hr</td></tr><tr><td>Tel + 385 1 4897 555</td><td>Mail: mkosanovic@hup.hr</td></tr><tr><td>Fax +385 1 4897 556</td><td>Website: http://www.hup.hr</td></tr></table>";
+var footer2 = "<p><table style='page-break-after:always;margin-top:50px;'><tr><td><img src='https:footer.png' ></td></tr></table></p>";
+
+var suma = 0.0;
+iostable += "<table id='stavke' style='width:100%' cellspacing='0' cellpadding='0'><tr style='border:1px solid black;padding-bottom:30px;'><td style='border-top:1px solid black;border-bottom: 1px solid black;border-left:1px solid black' >Vrsta dok.</td><td style='border-top:1px solid black;border-bottom: 1px solid black'>Br.dok</td><td style='border-top:1px solid black;border-bottom: 1px solid black'>Dat.dok</td><td style='border-top:1px solid black;border-bottom: 1px solid black'>Dat. dospje&#263;a</td><td style='border-top:1px solid black;border-bottom: 1px solid black'>Duguje</td><td style='border-top:1px solid black;border-bottom: 1px solid black;border-right:1px solid black'>Potražuje</td></tr>";
+for(var j = 0; j< financialData.length; j++)
+{
+	if(financialData[j]["OIB"] == companyData[i]["oib"] && companyData[i]["oib"] != "")
+	{
+		var vrstaDokumenta = financialData[j]["dok_vrsta"];
+		var brojDokumenta = financialData[j]["dok_broj"];
+		if(financialData[j]["dok_vrsta"] == "PS")
+		{
+			vrstaDokumenta = "IRA";
+			brojDokumenta = financialData[j]["vdok_broj"];
+		}
+		suma += parseFloat(financialData[j]["otvorena_stavka_iznos"]);
+		var datumDokumenta = financialData[j]["dat_dok"];
+		var datumDospijeca = financialData[j]["dat_dosp"];
+		var duguje = parseFloat(financialData[j]["otvorena_stavka_iznos"]);
+		var potrazuje = "0,00";
+		iostable += "<tr><td>" + vrstaDokumenta + "</td>";
+		iostable += "<td>" + brojDokumenta + "</td>";
+		iostable += "<td>" + datumDokumenta + "</td>";
+		iostable += "<td>" + datumDospijeca + "</td>";
+		iostable += "<td>" + accounting.formatMoney(duguje) + "</td>";
+		iostable += "<td>" + accounting.formatMoney(potrazuje) + "</td></tr>";
+	}
+	else if(financialData[j]["MB"] == companyData[i]["mb"] && companyData[i]["mb"] != "")
+	{
+		var vrstaDokumenta = financialData[j]["dok_vrsta"];
+		var brojDokumenta = financialData[j]["dok_broj"];
+		if(financialData[j]["dok_vrsta"] == "PS")
+		{
+			vrstaDokumenta = "IRA";
+			brojDokumenta = financialData[j]["vdok_broj"];
+		}
+		suma += parseFloat(financialData[j]["otvorena_stavka_iznos"]);
+		var datumDokumenta = financialData[j]["dat_dok"];
+		var datumDospijeca = financialData[j]["dat_dosp"];
+		var duguje = parseFloat(financialData[j]["otvorena_stavka_iznos"]);
+		var potrazuje = "0,00";
+		iostable += "<tr><td>" + vrstaDokumenta + "</td>";
+		iostable += "<td>" + brojDokumenta + "</td>";
+		iostable += "<td>" + datumDokumenta + "</td>";
+		iostable += "<td>" + datumDospijeca + "</td>";
+		iostable += "<td>" + accounting.formatMoney(duguje) + "</td>";
+		iostable += "<td>" + accounting.formatMoney(potrazuje) + "</td></tr>";	
+	}
+}
+iostable += "<tr style='margin-top:10px'><td colspan='6' style='font-weight:bold;text-align:right;border:1px solid black;'>Ukupno:" + accounting.formatMoney(suma) + "</td></tr></table><p></p>"
+
+$("body").append(hupinfo, [title, companyinfo, iostable, text, footer2]);   
+
+
+}
+
+function nl2br(text){
+	if(text.indexOf('%0D%0A') > -1){
+		re_nlchar = /%0D%0A/g ;
+	}else if(text.indexOf('%0A') > -1){
+		re_nlchar = /%0A/g ;
+	}else if(text.indexOf('%0D') > -1){
+		re_nlchar = /%0D/g ;
+	}
+	return unescape ( text.replace(re_nlchar,'<br />') );
+}
+
+function gup( name )
+{
+  name = name.replace(/[\[]/,"\\\[").replace(/[\]]/,"\\\]");
+  var regexS = "[\\?&]"+name+"=([^&#]*)";
+  var regex = new RegExp( regexS );
+  var results = regex.exec( window.location.href );
+  if( results == null )
+    return "";
+  else
+    return results[1];
+}
+</script>
+</head>
+<body id="body">
+</body>

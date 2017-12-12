@@ -1,0 +1,1386 @@
+<html>
+<head>
+<script src="//ajax.googleapis.com/ajax/libs/jquery/1.8.0/jquery.min.js" type="text/javascript"></script>
+<script src="//ajax.aspnetcdn.com/ajax/jquery.dataTables/1.9.3/jquery.dataTables.min.js" type="text/javascript"></script>
+<script src="//ajax.googleapis.com/ajax/libs/jqueryui/1.8.23/jquery-ui.min.js"></script>
+<script type="text/javascript" src="jquery.gchart.min.js"></script>
+<script type="text/javascript" src="jquery.gchart.icons.min.js"></script>
+<script type="text/javascript" src="accounting.min.js"></script>
+<script type="text/javascript" src="underscore-min.js"></script>
+<script type="text/javascript" src="utilities.js"></script>
+<link rel="stylesheet" href="//ajax.googleapis.com/ajax/libs/jqueryui/1.8.23/themes/cupertino/jquery-ui.css" />
+<meta http-equiv="Access-Control-Allow-Origin" content="*">
+<script type="text/javascript" >
+var financialData;
+var nazivUdruge;
+var sifreUdruga = new Array();
+var dugData;
+var korisnik;
+var text;
+// set default currency settings
+accounting.settings = {
+	currency: {
+		symbol : "kn",   // default currency symbol is '$'
+		format: "%v %s", // controls output: %s = symbol, %v = value/number (can be object: see below)
+		decimal : ",",  // decimal point separator
+		thousand: ".",  // thousands separator
+		precision : 2   // decimal places
+	},
+	number: {
+		precision : 2,  // default precision on numbers is 0
+		thousand: ".",
+		decimal : ","
+	}
+}
+
+// dohvati sve aktivne granske udruge i pozovi fillDropdown metodu
+$(document).ready(function() {
+			var korisnik = decodeURI(gup('korisnik'));
+			var korisnikEncoded = escape(korisnik);
+			text = "Po%u0161tovani%2C%20%0A%0AUvidom%20u%20knjigu%20otvorenih%20stavaka%20utvrdii%20smo%20da%20Va%u0161e%20poduze%u0107e%20nije%20podmirilo%20obvezu%20pla%u0107anja%20%u010Dlanarine%20HUP-u%20u%20gore%20navedenom%20iznosu.%20%0A%0AVjeruju%u0107i%20kako%20je%20nepla%u0107eni%20dug%20promakao%20Va%u0161oj%20pa%u017Enji%2C%20ovim%20putem%20ljubazno%20molimo%20hitno%20podmirenje%20istoga%20na%20%u017Eiro%20ra%u010Dun%20broj%202340009-1100151718%0A%0AUkoliko%20ste%20dugovanje%20u%20me%u0111uvremenu%20podmirili%2C%20smatrajte%20ovu%20opomenu%20neva%u017Ee%u0107om.%20%0A%0AS%20po%u0161tovanjem%2C%0A" + korisnikEncoded;	
+			$dialog = $('<div></div>')
+			.html('Molimo vas da budete strpljivi dok se financijski podaci u&#269;itaju. Dohvat podataka mo&#382;e potrajati i ovisi o koli&#269;ini podataka i brzini va&#353;e Internet veze. Prozor &#263;e sam ugasiti nakon &#353;to se podaci u&#269;itaju.')
+			.dialog({autoOpen: false, title: 'U&#269;itavam podatke...',modal: true, position: 'top' });			
+			$dialog.dialog('open');				
+			$.ajaxSetup({ scriptCharset: "utf-8" , contentType: "application/json; charset=utf-8"});
+			$.getScript("//creatorexport.zoho.com/hupadmin/baza/json/Granske_udruge/udruga_aktivna=true" + "&callback=fillDropdown",function(data){});		
+	} );
+
+
+// napuni dropdown Voditelji i dropdown udruge, zatim dohvati sve financijske podatke i pozovi metodu GetFinancialData
+function fillDropdown(data)
+{
+	udrugeData = data["Granska_udruga"];
+	// fill udruge dropdown
+	for (var i = 0; i < udrugeData.length; i++){
+		var sifra = udrugeData[i]["sifra_udruge"];
+		//if (sifra.charAt(0) == '0') sifra = sifra.substr(1,sifra.length-1);	
+		$('#udruge').append('<option value="' +  sifra + '">' + udrugeData[i]["naziv"] + ' - ' + udrugeData[i]["voditelj"] +'</option>');
+		sifreUdruga[i] = sifra;
+	}
+
+	// fill voditelj dropdown
+	var voditeljiList = new Array();
+	for (var i = 0; i < udrugeData.length; i++){ 		
+		voditeljiList[i] = udrugeData[i]["voditelj"];
+	}
+	var voditelji = _.uniq(voditeljiList);
+	var voditeljiFull = new Array();
+	for (var i = 0; i < voditelji.length; i++){ 		
+		voditeljiFull[i] = new Array(2);
+		voditeljiFull[i][0] = voditelji[i];
+		for (var j = 0; j < udrugeData.length; j++){ 		
+			if(voditelji[i] == udrugeData[j]["voditelj"])
+			{
+				var sifra = udrugeData[j]["sifra_udruge"];				
+				//if (sifra.charAt(0) == '0') sifra = sifra.substr(1,sifra.length-1);				
+				if(voditeljiFull[i][1] == null) voditeljiFull[i][1] = sifra + ";";
+				else voditeljiFull[i][1] += sifra + ";";
+				
+			}
+		}	
+	}	
+	for (var i = 0; i < voditeljiFull.length; i++){ 		
+		$('#voditelji').append('<option value="' +  voditeljiFull[i][1] + '">' + voditeljiFull[i][0] +'</option>');
+	}	
+
+	$.getScript("//creatorexport.zoho.com/hupadmin/baza/json/Financije_dashboard/" + "&callback=GetFinancialData",function(data2){});
+}
+	
+// dohvati financijske podatke za koje nemamo OIB (povezane s firmom preko MB-a) i pozovi fillCompanyNames	
+function  GetFinancialData(data2)
+{
+	financialData = data2["Financije"];	
+	for (var i = 0; i < financialData.length; i++){ 
+		var v = financialData[i]["OIB.naziv"];
+		var k = "naziv";
+		delete financialData[i]["OIB.naziv"];
+        financialData[i][k] = v;
+		
+	} 
+	$.getScript("//creatorexport.zoho.com/hupadmin/baza/json/Financije_dashboard_MB/" + "&callback=fillCompanyNames",function(data3){});
+}	
+
+// napravi merge ova dva seta te pozovi metode za punjenje tablica i grafova	
+function fillCompanyNames(data3)
+{
+	financialData2 = data3["Financije"];
+	for (var i = 0; i < financialData2.length; i++){ 
+		var v = financialData2[i]["MB.naziv"];
+		var k = "naziv";
+		delete financialData2[i]["MB.naziv"];
+		financialData2[i][k] = v;
+		
+	} 
+	var companies = new Array();
+	var companyList = new Array();
+	var data4 = new Array();
+
+	for (var i = 0; i < financialData2.length; i++){
+		if(financialData2[i]["MB"] != "" && financialData2[i]["OIB"] == "") companies[i] = financialData2[i]["MB"];
+		//companies[i] = financialData2[i]["naziv"];
+	} 
+ 
+	companyList = _.uniq(companies);
+
+	for (var i = 0; i < companyList.length; i++){ 
+	
+		for (var j = 0; j < financialData2.length; j++){ 
+			if(financialData2[j]["MB"] == companyList[i])
+			{
+				data4[i] = new Array(4);
+				data4[i][0] = financialData2[j]["naziv"];
+				data4[i][1] = financialData2[j]["MB"];
+				data4[i][2] = financialData2[j]["status"];
+				data4[i][3] = financialData2[j]["udruga"];
+				break;
+			}			
+		} 	
+	} 
+	
+	for (var i = 0; i < financialData.length; i++){ 
+		if( financialData[i]["naziv"] == "")
+		{
+				for (var j = 0; j < data4.length; j++){ 
+					if(financialData[i]["MB"] == data4[j][1])
+					{
+						financialData[i]["naziv"] = data4[j][0];
+						financialData[i]["status"] = data4[j][2];
+						financialData[i]["udruga"] = data4[j][3];
+						break;
+					}
+				} 
+		}
+	}
+
+
+    createCompanyListDataTable();
+	createFinancialDataTable();
+	createDebtStructureDataTable();	
+	drawChart("sve");
+	drawDugChart("sve");
+}
+
+
+function createFinancialDataTable()
+{
+	// formatdata
+	for (var i = 0; i < financialData.length; i++){ 
+		financialData[i]["dug"] = accounting.formatMoney(financialData[i]["dug"]);
+		financialData[i]["pot"] = accounting.formatMoney(financialData[i]["pot"]);
+		
+	} 	
+	
+	$('#dynamic').html( '<table cellpadding="0"  width="100%" cellspacing="0" border="0" id="data" style="font: 12px Arial, Helvetica, Sans-Serif;"></table>' );
+	$('#data').dataTable({
+		"bJQueryUI": true,
+		"bFilter": true,
+		"aaData": financialData,
+		"bInfo":true,
+		"iDisplayLength": 10,
+		"aaSorting": [[ 0, "asc" ]],
+		"bLengthChange": false,
+		"sDom": '<"H"<"title2">f>t<"F"ip>',
+		"oLanguage": {
+			"sInfo": "Prikaz  _START_ do _END_ od _TOTAL_ zapisa",
+			"sZeroRecords": "Nema podataka",
+			"sInfoEmpty": "Prikaz 0 do 0 od 0 zapisa",
+			"sInfoFiltered": " - filtirano od _MAX_ zapisa",
+			"sSearch": "Filtriraj zapise:"
+		},
+		"aoColumns":[
+				{ "mDataProp":"naziv","sTitle":"Tvrtka","sWidth":"200px"},
+				{ "mDataProp":"dok_vrsta","sTitle":"Vrsta dokumenta" },
+				{ "mDataProp":"dok_broj","sTitle":"Broj dokumenta"},
+				{ "mDataProp":"dat_dok","sTitle":"Datum dokumenta","sType":"datum","sSortDataType": "dom-text"},
+				{ "mDataProp":"dat_dosp","sTitle":"Datum dospije&#263;a","sType":"datum","sSortDataType": "dom-text"},
+				{ "mDataProp":"vdok_vrsta","sTitle":"Vrsta veznog dokumenta"},
+				{ "mDataProp":"vdok_broj","sTitle":"Broj veznog dokumenta"},
+				{ "mDataProp":"dug","sTitle":"Dugovanje","sType":"numeric","sType":"currency","sSortDataType": "dom-text"},
+				{ "mDataProp":"pot","sTitle":"Uplata","sType":"numeric","sType":"currency","sSortDataType": "dom-text"},
+				{ "mDataProp":"otvorena_stavka","sTitle":"Otvorena stavka"},
+				{ "mDataProp":"custom","sTitle":"Custom","sType": "string","bVisible":false}
+				]
+
+
+		});	
+		$("div.title2").html('<b>Detaljni pregled financijskih podataka</b>');
+}
+
+function createCompanyListDataTable()
+{
+	var companies = new Array();
+	var companyList = new Array();
+	var data = new Array();
+
+
+  // create initial list
+
+  for (var i = 0; i < financialData.length; i++){
+		if(financialData[i]["OIB"] != "") companies.push(financialData[i]["OIB"]);
+		else if(financialData[i]["MB"] != "") companies.push(financialData[i]["MB"]);
+  } 
+ 
+  companyList = _.uniq(companies);
+
+  for (var i = 0; i < companyList.length; i++){ 
+		data[i] = new Array(7);
+		data[i][0] = "";
+		data[i][1] = companyList[i];
+		data[i][2] = 0.00;
+		data[i][3] = 0.00;
+		data[i][4] = 0.00;
+		data[i][5] = 0.00;
+		data[i][6] = 0.00;
+		data[i][7] = "";
+	} 
+
+	// populate financial data
+	for (var i = 0; i < financialData.length; i++){ 
+		var index = _.indexOf(companyList,financialData[i]["OIB"]);
+		var index2 = _.indexOf(companyList,financialData[i]["MB"]);
+		//console.log(index + " " + index2);
+		if(index == -1 && index2 != -1) index = index2;
+		//console.log(index);
+		if(index != -1)
+		{
+			var vdok_broj = financialData[i]["vdok_broj"];
+			year = parseInt(vdok_broj.substring(0,4));
+			if (year < 1990)
+			{
+				var date = financialData[i]["dat_dok"];
+				year = getYearFromString(date);
+			}
+			var currentYear = isCurrentYear2(year);
+			
+			if(currentYear)
+			{
+				data[index][4] += parseFloat(financialData[i]["dug"]);
+				data[index][4] -= parseFloat(financialData[i]["pot"]);				
+				data[index][5] += parseFloat(financialData[i]["pot"]);
+				data[index][6]  += parseFloat(financialData[i]["dug"]);	
+
+			}
+			else
+			{
+				data[index][3] += parseFloat(financialData[i]["dug"]);
+				data[index][3] -= parseFloat(financialData[i]["pot"]);
+				data[index][5] += parseFloat(financialData[i]["pot"]);
+			}
+			data[index][0] = financialData[i]["naziv"];
+			data[index][2] =  parseFloat(data[index][4] + data[index][3]);
+			if( _.indexOf(sifreUdruga,financialData[i]["custom"].toString()) != -1) data[index][7] = financialData[i]["custom"];
+		}
+		else
+		{
+			console.log(financialData[i]["OIB"] + " " + financialData[i]["MB"]);
+		}
+	}
+
+	// format data
+	
+	for (var i = 0; i < data.length; i++){ 
+		data[i][2] = accounting.formatMoney(data[i][2]);
+		data[i][3] = accounting.formatMoney(data[i][3]);
+		data[i][4] = accounting.formatMoney(data[i][4]);
+		data[i][5] = accounting.formatMoney(data[i][5]);
+		data[i][6] = accounting.formatMoney(data[i][6]);	
+	} 	
+
+	$('#companyList').html( '<table cellpadding="0"  width="100%" cellspacing="0" border="0" id="toplist" style="font: 12px Arial, Helvetica, Sans-Serif;"></table>' );
+	$('#toplist').dataTable({
+		"bJQueryUI": true,
+		"bFilter": true,
+		"aaData": data,
+		"bInfo":true,
+		"iDisplayLength": 10,
+		"aaSorting": [[ 2, "desc" ]],
+		"bLengthChange": false,
+		"sDom": '<"H"<"title">f>t<"F"ip>',
+		"oLanguage": {
+			"sInfo": "Prikaz  _START_ do _END_ od _TOTAL_ zapisa",
+			"sZeroRecords": "Nema podataka",
+			"sInfoEmpty": "Prikaz 0 do 0 od 0 zapisa",
+			"sInfoFiltered": " - filtirano od _MAX_ zapisa",
+			"sSearch": "Filtriraj zapise:"
+		},
+		"aoColumns":[
+				{ "sTitle":"Tvrtka","sWidth":"200px" },
+				{ "sTitle":"MB/OIB","bVisible":false },
+				{ "sTitle":"Saldo","sType":"currency","sSortDataType": "dom-text" },
+				{ "sTitle":"Stari dug","sType":"currency","sSortDataType": "dom-text"},
+				{ "sTitle":"Novi dug","sType":"currency","sSortDataType": "dom-text"},
+				{ "sTitle":"Pla&#263;eno","sType":"currency","sSortDataType": "dom-text"},
+				{ "sTitle":"Fakturirano","sType":"currency","sSortDataType": "dom-text"},
+				{ "sTitle":"Custom","sType": "string","bVisible":false},
+				{"sTitle":"Izvod","sType":"html","sDefaultContent": "","fnRender": function (oObj) {
+					var saldo = currencyToFloat(oObj.aData[2]);
+					if (saldo > 0) return '<a href="https:Print.html?mb=' + oObj.aData[1] + '&oib=' + oObj.aData[1] + '&text=' + text + '" target="_blank">' + 'IOS' + '</a>';
+					else return '';
+					}
+				}
+				]
+
+
+		});	
+		$("div.title").html('<b>Popis tvrtki s pregledom financija</b>');
+}
+
+function createDebtStructureDataTable()
+{
+	var companies = new Array();
+	var companyList = new Array();
+	var data = new Array();
+	var thisYear = new Date();
+
+	// create initial list
+
+	for (var i = 0; i < financialData.length; i++){ 
+		if(financialData[i]["OIB"] != "") companies.push(financialData[i]["OIB"]);
+		else if(financialData[i]["MB"] != "") companies.push(financialData[i]["MB"]);
+	} 
+ 
+	companyList = _.uniq(companies);
+
+	var time_data = new Array();
+	var years = new Array();
+	for (var i = 0; i < financialData.length; i++){ 
+		var date = financialData[i]["dat_dok"];
+		time_data[i] = getYearFromString(date);
+	} 
+	years = _.uniq(time_data);
+	years.sort(function(a,b){return b - a});
+
+	for (var i = 0; i < companyList.length; i++){ 
+		data[i] = new Array(years.length+3);
+		data[i][0] = "";
+		data[i][1] = "";
+		for (j=2;j<years.length+3;j++)
+		{
+			data[i][j] = 0.00;
+		}
+	} 
+	for (var i = 0; i < financialData.length; i++){
+		var index = _.indexOf(companyList,financialData[i]["OIB"]);
+		var index3 = _.indexOf(companyList,financialData[i]["MB"]);
+		if(index != -1)
+		{
+			var vdok_broj = financialData[i]["vdok_broj"];
+			year = parseInt(vdok_broj.substring(0,4));
+				
+			var index2 = _.indexOf(years,year);		
+			if( index2 == -1)
+			{
+				var date = financialData[i]["dat_dok"];
+				var index2 = _.indexOf(years,getYearFromString(date));			
+			}
+			data[index][index2+3] +=  currencyToFloat(financialData[i]["dug"]);
+			data[index][index2+3] -=  currencyToFloat(financialData[i]["pot"]);
+			data[index][0] = financialData[i]["naziv"];
+			if( _.indexOf(sifreUdruga,financialData[i]["custom"].toString()) != -1) data[index][1] = financialData[i]["custom"];
+		}
+		else if(index3 != -1)
+		{
+			var vdok_broj = financialData[i]["vdok_broj"];
+			year = parseInt(vdok_broj.substring(0,4));
+				
+			var index2 = _.indexOf(years,year);		
+			if( index2 == -1)
+			{
+				var date = financialData[i]["dat_dok"];
+				var index2 = _.indexOf(years,getYearFromString(date));			
+			}
+			data[index3][index2+3] +=  currencyToFloat(financialData[i]["dug"]);
+			data[index3][index2+3] -=  currencyToFloat(financialData[i]["pot"]);
+			data[index3][0] = financialData[i]["naziv"];
+			if( _.indexOf(sifreUdruga,financialData[i]["custom"].toString()) != -1) data[index3][1] = financialData[i]["custom"];
+		}
+		//if(index == -1 && index3 != -1)index = index3;
+
+
+	}
+
+	for (var i = 0; i < data.length; i++){ 
+		var sum = 0.00;
+		for (var j = 3; j < years.length+3; j++) {
+		sum += data[i][j];
+		data[i][j] = accounting.formatMoney(data[i][j]);
+		}
+		data[i][2] = accounting.formatMoney(sum);
+	}
+
+	var columns = [{ "sTitle":"Tvrtka","sWidth":"200px" },{ "sTitle":"Custom","bVisible":false },{ "sTitle":"Ukupan dug","sType":"currency","sSortDataType": "dom-text" } ];
+	
+	for (var i = 0;i<years.length;i++)
+	{
+		columns.push({ "sTitle": years[i].toString() ,"sType":"currency","sSortDataType": "dom-text"});
+	}
+
+	
+	$('#debtList').html( '<table cellpadding="0"  width="100%" cellspacing="0" border="0" id="debtData" style="font: 12px Arial, Helvetica, Sans-Serif;"></table>' );
+	$('#debtData').dataTable({
+		"bJQueryUI": true,
+		"bFilter": true,
+		"aaData": data,
+		"bInfo":true,
+		"iDisplayLength": 10,
+		"aaSorting": [[ 2, "desc" ]],
+		"bLengthChange": false,
+		"sDom": '<"H"<"title3">f>t<"F"ip>',
+		"oLanguage": {
+			"sInfo": "Prikaz  _START_ do _END_ od _TOTAL_ zapisa",
+			"sZeroRecords": "Nema podataka",
+			"sInfoEmpty": "Prikaz 0 do 0 od 0 zapisa",
+			"sInfoFiltered": " - filtirano od _MAX_ zapisa",
+			"sSearch": "Filtriraj zapise:"
+		},
+		"aoColumns": columns
+		});	
+		$("div.title3").html('<b>Struktura duga</b>');	
+	
+}
+
+
+function drawChart(value)
+{
+$('#chartArea').gchart('destroy');
+var fakturirano=0.0;
+var placeno=0.0;
+var dugovanje_novo=0.0;
+var dugovanje_staro=0.0;
+var placeno_novo = 0.0;
+var placeno_staro = 0.0;
+var saldo = 0.0;
+var max = 0.0;
+if(value != "sve")
+{
+	  for (var i = 0; i < financialData.length; i++){ 
+			var customUdruga = TryParseInt(financialData[i]["custom"]);
+			var filter = TryParseInt(value);
+			if(customUdruga == filter)
+			{
+				var vdok_broj = financialData[i]["vdok_broj"];
+				year = parseInt(vdok_broj.substring(0,4));
+				
+				var currentYear = isCurrentYear2(year);
+				
+				sumdug += currencyToFloat(financialData[i]["dug"]);
+				sumpot += currencyToFloat(financialData[i]["pot"]);
+				if(currentYear)
+				{
+					dugovanje_novo += currencyToFloat(financialData[i]["dug"]);
+					fakturirano += currencyToFloat(financialData[i]["dug"]);
+				}
+				else dugovanje_staro += currencyToFloat(financialData[i]["dug"]);
+				
+				placeno += currencyToFloat(financialData[i]["pot"]);
+				
+				if(!currentYear)
+				{
+					dugovanje_staro -= currencyToFloat(financialData[i]["pot"]);
+					placeno_staro += currencyToFloat(financialData[i]["pot"]);
+				}
+				else
+				{
+					dugovanje_novo -= currencyToFloat(financialData[i]["pot"]);
+					placeno_novo += currencyToFloat(financialData[i]["pot"]);
+				}
+			}
+	  } 
+}
+else
+{
+	var sumdug = 0.0;
+	var sumpot = 0.0;
+	  for (var i = 0; i < financialData.length; i++){ 
+	  	
+		var vdok_broj = financialData[i]["vdok_broj"];
+		year = parseInt(vdok_broj.substring(0,4));
+		if (year < 1990)
+		{
+			var date = financialData[i]["dat_dok"];
+			year = getYearFromString(date);
+		}
+		var currentYear = isCurrentYear2(year);
+		
+		sumdug += currencyToFloat(financialData[i]["dug"]);
+		sumpot += currencyToFloat(financialData[i]["pot"]);
+		if(currentYear)
+		{
+			dugovanje_novo += currencyToFloat(financialData[i]["dug"]);
+			fakturirano += currencyToFloat(financialData[i]["dug"]);
+		}
+		else dugovanje_staro += currencyToFloat(financialData[i]["dug"]);
+		
+		placeno += currencyToFloat(financialData[i]["pot"]);
+		
+		if(!currentYear)
+		{
+			dugovanje_staro -= currencyToFloat(financialData[i]["pot"]);
+			placeno_staro += currencyToFloat(financialData[i]["pot"]);
+		}
+		else
+		{
+			dugovanje_novo -= currencyToFloat(financialData[i]["pot"]);
+			placeno_novo += currencyToFloat(financialData[i]["pot"]);
+		}
+	  }
+		//alert(accounting.formatMoney(sumdug));
+		//alert(accounting.formatMoney(sumpot));
+}
+  
+var staro_array1 = [0,placeno_staro,0];
+var staro_array2 = [dugovanje_staro,placeno_staro,0];
+var staro_array3 = [dugovanje_staro,0,0];
+var novo_array = [dugovanje_novo,placeno_novo,fakturirano];
+
+var arraySeries = new Array();
+var arrayIcons = new Array();
+if (dugovanje_staro == 0.00 && placeno_staro > 0.00)
+{
+	var series1= $.gchart.series(novo_array,'#AED0EA');
+	var series2= $.gchart.series(staro_array1,'red');
+	arraySeries = [series2, series1];
+	arrayIcons = [$.gchart.outlineIcon(accounting.formatMoney(placeno_staro), 14, false,  '', 0,1),
+		$.gchart.outlineIcon(accounting.formatMoney(dugovanje_novo), 14, false,  '', 1,0),
+		$.gchart.outlineIcon(accounting.formatMoney(placeno_novo), 14, false,'',1,1),
+		$.gchart.outlineIcon(accounting.formatMoney(fakturirano), 14, false,'',1,2)
+		];
+
+}
+else if (dugovanje_staro > 0.00 && placeno_staro == 0.00)
+{
+	var series1= $.gchart.series(novo_array,'#AED0EA');
+	var series2= $.gchart.series(staro_array3,'red');
+	arraySeries = [series2, series1];
+	arrayIcons = [$.gchart.outlineIcon(accounting.formatMoney(dugovanje_staro), 14, false,  '', 0,0),
+			$.gchart.outlineIcon(accounting.formatMoney(placeno_novo), 14, false,  '', 1,1),
+			$.gchart.outlineIcon(accounting.formatMoney(fakturirano), 14, false,'',1,2),
+			$.gchart.outlineIcon(accounting.formatMoney(dugovanje_novo), 14, false,'',1,0)
+			];	
+}
+else if (dugovanje_staro == 0.00 && placeno_staro == 0.00)
+{
+	arraySeries = [$.gchart.series(novo_array,'#AED0EA')];
+	arrayIcons = [$.gchart.outlineIcon(accounting.formatMoney(dugovanje_novo), 14, false,  '', 0,0),
+			$.gchart.outlineIcon(accounting.formatMoney(placeno_novo), 14, false,  '', 0,1),
+			$.gchart.outlineIcon(accounting.formatMoney(fakturirano), 14, false,'',0,2)
+			];
+}
+else
+{	
+	arraySeries = [$.gchart.series('Staro',staro_array2,'red'),$.gchart.series('Novo',novo_array,'#AED0EA')];
+	arrayIcons = [ 
+					$.gchart.outlineIcon(accounting.formatMoney(dugovanje_staro), 14, false,'',0,0),				
+					$.gchart.outlineIcon(accounting.formatMoney(placeno_staro), 14, false,'',0,1),
+					$.gchart.outlineIcon(accounting.formatMoney(dugovanje_novo), 14, false,'',1,0),				
+					$.gchart.outlineIcon(accounting.formatMoney(placeno_novo), 14, false,'',1,1),
+					$.gchart.outlineIcon(accounting.formatMoney(fakturirano), 14, false,'',1,2)				
+				];
+
+}
+			
+
+
+
+
+$('#chartArea').gchart({type: 'barVertOverlapped', 
+	width: 400,
+	height: 300,
+	title: 'Pregled',
+	backgroundColor: '#F3F0EB',
+	margins: [40,40,20,0],
+	barSpacing: 50,
+	barWidth: 50,	
+	legend: 'right',
+	titleColor: 'black',
+	minValue: $.gchart.calculate,
+	maxValue: $.gchart.calculate,
+	series: arraySeries, 
+	icons: arrayIcons,
+	axes: [$.gchart.axis('bottom',['Saldo', 'Pla&#263;eno', 'Fakturirano'], 'black',10)
+	] 
+	
+});	
+          
+
+
+}
+
+function drawDugChart(value)
+{
+$('#dugChart').gchart('destroy');
+
+var time_data = new Array();
+var years = new Array();
+for (var i = 0; i < financialData.length; i++){ 
+	var date = financialData[i]["dat_dok"];
+	time_data[i] = parseInt(date.substring(date.length-4,date.length));
+} 
+years = _.uniq(time_data);
+years.sort(function(a,b){return b - a});
+
+var data = new Array();
+
+for (var i = 0; i < years.length; i++){ 
+		data[i] = new Array(2);
+		data[i][0] = years[i];
+		data[i][1] = 0.00;
+	} 
+	
+var thisYear = new Date();
+if(value == "sve")
+{
+	for (var i = 0; i < financialData.length; i++){ 
+		var vdok_broj = financialData[i]["vdok_broj"];
+		year = parseInt(vdok_broj.substring(0,4));
+			
+		var index = _.indexOf(years,year);		
+		if( index == -1)
+		{
+			var date = financialData[i]["dat_dok"];
+			var index = _.indexOf(years,getYearFromString(date));			
+		}
+		data[index][1] +=  currencyToFloat(financialData[i]["dug"]);
+		data[index][1] -=  parseFloat(currencyToFloat(financialData[i]["pot"]));
+	}
+}
+else
+{
+	for (var i = 0; i < financialData.length; i++){ 
+		var customUdruga = TryParseInt(financialData[i]["custom"]);
+		var filter = TryParseInt(value);
+		if(customUdruga == filter)
+		{
+			var vdok_broj = financialData[i]["vdok_broj"];
+			year = parseInt(vdok_broj.substring(0,4));
+				
+			var index = _.indexOf(years,year);
+			data[index][1] +=  currencyToFloat(financialData[i]["dug"]);
+			data[index][1] -=  parseFloat(currencyToFloat(financialData[i]["pot"]));
+		}
+	}
+
+}
+
+var chartData = new Array();
+var moneyData = new Array();
+for (var i = 0; i < data.length; i++){ 
+		chartData[i] = data[i][1];
+	} 
+var largest = Math.max.apply(Math, chartData); 	
+
+for (var i = 0; i < data.length; i++){ 
+		moneyData[i] = $.gchart.outlineIcon(accounting.formatMoney(data[i][1]), 12, false,  '', 0,i);
+	} 	
+
+
+	$('#dugChart').gchart({type: 'barVert', 
+		width: 550,
+		height: 300,
+		title: 'Struktura duga po godinama',
+		margins: [40,40,20,0],
+		backgroundColor: '#F3F0EB',
+		barSpacing: 40,
+		barWidth: 30,	
+		legend: 'right',
+		titleColor: 'black', 
+		series: [$.gchart.series(chartData,'#AED0EA',0,largest),	
+		], 
+		icons: moneyData,
+		axes: [$.gchart.axis('bottom',years, 'black',10)
+		]
+		
+		
+	});	
+	
+		$dialog.dialog('close');	
+}
+
+function TryParseInt(str,defaultValue){     var retValue = defaultValue;     if(str!=null){         if(str.length>0){             if (!isNaN(str)){                 retValue = parseInt(str);             }         }     }     return retValue; }
+
+// event handler metode
+function changeUdruga(udruge)
+{
+	var value = udruge.options[udruge.selectedIndex].value;
+	if(value != "sve")
+	{
+
+		var oTable = $('#data').dataTable();   
+		var oTable2 = $('#toplist').dataTable();
+		var oTable3 = $('#debtData').dataTable(); 		
+		oTable.fnFilter( value,10);
+		oTable2.fnFilter( value,7);
+		oTable3.fnFilter( value,1);
+		drawChart(value);
+		drawDugChart(value);
+	}
+	else
+	{
+		var oTable = $('#data').dataTable();   
+		var oTable2 = $('#toplist').dataTable();
+		var oTable3 = $('#debtData').dataTable(); 		
+		oTable.fnFilter('',10);
+		oTable2.fnFilter('',7);
+		oTable3.fnFilter('',1);
+		drawChart("sve");
+		drawDugChart("sve");
+		
+	}
+}
+
+function changeVoditelj(voditelj)
+{
+	var value = voditelj.options[voditelj.selectedIndex].value;
+	if(value != "sve")
+	{
+		var value = value.split( ";" );
+		var regex = "";
+		for ( var i = 0; i < value.length -1; i++ )
+		{
+			regex += value[i] + "|";
+		}
+		regex = regex.substring(0,regex.length-1);
+		fnFilterColumn(regex,10,'#data');
+		fnFilterColumn(regex,7,'#toplist');
+		fnFilterColumn(regex,1,'#debtData');
+		drawChart(regex);
+		drawDugChart(regex);
+	}
+	else
+	{
+		var oTable = $('#data').dataTable();   
+		var oTable2 = $('#toplist').dataTable();
+		var oTable3 = $('#debtData').dataTable(); 		
+		oTable.fnFilter('',10);
+		oTable2.fnFilter('',7);
+		oTable3.fnFilter('',1);
+		drawChart("sve");
+		drawDugChart("sve");
+	}
+
+	
+
+}
+
+// Helper functions
+
+
+
+</script>
+<style>
+.ui-widget-overlay {
+    background: black;
+    filter: alpha(opacity = 50);
+    left: 0;
+    opacity: 0.5;
+    position: absolute;
+    top: 0;
+}
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * General page setup
+ */
+#dt_example {
+	font: 13px "Lucida Grande", Verdana, Arial, Helvetica, sans-serif;
+	margin: 0;
+	padding: 0;
+	color: #333;
+	background-color: #fff;
+}
+
+
+#dt_example #container {
+	width: 800px;
+	margin: 30px auto;
+	padding: 0;
+}
+
+
+#dt_example #footer {
+	margin: 50px auto 0 auto;
+	padding: 0;
+}
+
+#dt_example #demo {
+	margin: 30px auto 0 auto;
+}
+
+#dt_example .demo_jui {
+	margin: 30px auto 0 auto;
+}
+
+#dt_example .big {
+	font-size: 1.3em;
+	font-weight: bold;
+	line-height: 1.6em;
+	color: #4E6CA3;
+}
+
+#dt_example .spacer {
+	height: 20px;
+	clear: both;
+}
+
+#dt_example .clear {
+	clear: both;
+}
+
+#dt_example pre {
+	padding: 15px;
+	background-color: #F5F5F5;
+	border: 1px solid #CCCCCC;
+}
+
+#dt_example h1 {
+	margin-top: 2em;
+	font-size: 1.3em;
+	font-weight: normal;
+	line-height: 1.6em;
+	color: #4E6CA3;
+	border-bottom: 1px solid #B0BED9;
+	clear: both;
+}
+
+#dt_example h2 {
+	font-size: 1.2em;
+	font-weight: normal;
+	line-height: 1.6em;
+	color: #4E6CA3;
+	clear: both;
+}
+
+#dt_example a {
+	color: #0063DC;
+	text-decoration: none;
+}
+
+#dt_example a:hover {
+	text-decoration: underline;
+}
+
+#dt_example ul {
+	color: #4E6CA3;
+}
+
+.css_right {
+	float: right;
+}
+
+.css_left {
+	float: left;
+}
+
+.demo_links {
+	float: left;
+	width: 50%;
+	margin-bottom: 1em;
+}
+
+#demo_info {
+	padding: 5px;
+	border: 1px solid #B0BED9;
+	height: 100px;
+	width: 100%;
+	overflow: auto;
+}
+.paging_two_button .ui-button {
+	float: left;
+	cursor: pointer;
+	* cursor: hand;
+}
+
+.paging_full_numbers .ui-button {
+	padding: 2px 6px;
+	margin: 0;
+	cursor: pointer;
+	* cursor: hand;
+	color: #333 !important;
+}
+
+.dataTables_paginate .ui-button {
+	margin-right: -0.1em !important;
+}
+
+.paging_full_numbers {
+	width: 350px !important;
+}
+
+.dataTables_wrapper .ui-toolbar {
+	padding: 5px;
+}
+
+.dataTables_paginate {
+	width: auto;
+}
+
+.dataTables_info {
+	padding-top: 3px;
+}
+
+table.display thead th {
+	padding: 3px 0px 3px 10px;
+	cursor: pointer;
+	* cursor: hand;
+}
+
+div.dataTables_wrapper .ui-widget-header {
+	font-weight: normal;
+}
+
+
+/*
+ * Sort arrow icon positioning
+ */
+table.display thead th div.DataTables_sort_wrapper {
+	position: relative;
+	padding-right: 20px;
+}
+
+table.display thead th div.DataTables_sort_wrapper span {
+	position: absolute;
+	top: 50%;
+	margin-top: -8px;
+	right: 0;
+}
+
+
+
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * Everything below this line is the same as demo_table.css. This file is
+ * required for 'cleanliness' of the markup
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * DataTables features
+ */
+
+.dataTables_wrapper {
+	position: relative;
+	clear: both;
+}
+
+.dataTables_processing {
+	position: absolute;
+	top: 0px;
+	left: 50%;
+	width: 250px;
+	margin-left: -125px;
+	border: 1px solid #ddd;
+	text-align: center;
+	color: #999;
+	font-size: 11px;
+	padding: 2px 0;
+}
+
+.dataTables_length {
+	width: 40%;
+	float: left;
+}
+
+.dataTables_filter {
+	width: 50%;
+	float: right;
+	text-align: right;
+}
+
+.dataTables_info {
+	width: 50%;
+	float: left;
+}
+
+.dataTables_paginate {
+	float: right;
+	text-align: right;
+}
+
+
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * DataTables display
+ */
+table.display {
+	margin: 0 auto;
+	width: 100%;
+	clear: both;
+	border-collapse: collapse;
+}
+
+table.display tfoot th {
+	padding: 3px 0px 3px 10px;
+	font-weight: bold;
+	font-weight: normal;
+}
+
+table.display tr.heading2 td {
+	border-bottom: 1px solid #aaa;
+}
+
+table.display td {
+	padding: 3px 10px;
+}
+
+table.display td.center {
+	text-align: center;
+}
+
+
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * DataTables sorting
+ */
+
+.sorting_asc {
+	background: url('../images/sort_asc.png') no-repeat center right;
+}
+
+.sorting_desc {
+	background: url('../images/sort_desc.png') no-repeat center right;
+}
+
+.sorting {
+	background: url('../images/sort_both.png') no-repeat center right;
+}
+
+.sorting_asc_disabled {
+	background: url('../images/sort_asc_disabled.png') no-repeat center right;
+}
+
+.sorting_desc_disabled {
+	background: url('../images/sort_desc_disabled.png') no-repeat center right;
+}
+
+
+
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * DataTables row classes
+ */
+table.display tr.odd.gradeA {
+	background-color: #ddffdd;
+}
+
+table.display tr.even.gradeA {
+	background-color: #eeffee;
+}
+
+
+
+
+table.display tr.odd.gradeA {
+	background-color: #ddffdd;
+}
+
+table.display tr.even.gradeA {
+	background-color: #eeffee;
+}
+
+table.display tr.odd.gradeC {
+	background-color: #ddddff;
+}
+
+table.display tr.even.gradeC {
+	background-color: #eeeeff;
+}
+
+table.display tr.odd.gradeX {
+	background-color: #ffdddd;
+}
+
+table.display tr.even.gradeX {
+	background-color: #ffeeee;
+}
+
+table.display tr.odd.gradeU {
+	background-color: #ddd;
+}
+
+table.display tr.even.gradeU {
+	background-color: #eee;
+}
+
+
+tr.odd {
+	background-color: #E2E4FF;
+}
+
+tr.even {
+	background-color: white;
+}
+
+
+
+
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * Misc
+ */
+.dataTables_scroll {
+	clear: both;
+}
+
+.dataTables_scrollBody {
+	-webkit-overflow-scrolling: touch;
+}
+
+.top, .bottom {
+	padding: 15px;
+	background-color: #F5F5F5;
+	border: 1px solid #CCCCCC;
+}
+
+.top .dataTables_info {
+	float: none;
+}
+
+.clear {
+	clear: both;
+}
+
+.dataTables_empty {
+	text-align: center;
+}
+
+tfoot input {
+	margin: 0.5em 0;
+	width: 100%;
+	color: #444;
+}
+
+tfoot input.search_init {
+	color: #999;
+}
+
+td.group {
+	background-color: #d1cfd0;
+	border-bottom: 2px solid #A19B9E;
+	border-top: 2px solid #A19B9E;
+}
+
+td.details {
+	background-color: #d1cfd0;
+	border: 2px solid #A19B9E;
+}
+
+
+.example_alt_pagination div.dataTables_info {
+	width: 40%;
+}
+
+.paging_full_numbers a.paginate_button,
+ 	.paging_full_numbers a.paginate_active {
+	border: 1px solid #aaa;
+	-webkit-border-radius: 5px;
+	-moz-border-radius: 5px;
+	padding: 2px 5px;
+	margin: 0 3px;
+	cursor: pointer;
+	*cursor: hand;
+	color: #333 !important;
+}
+
+.paging_full_numbers a.paginate_button {
+	background-color: #ddd;
+}
+
+.paging_full_numbers a.paginate_button:hover {
+	background-color: #ccc;
+	text-decoration: none !important;
+}
+
+.paging_full_numbers a.paginate_active {
+	background-color: #99B3FF;
+}
+
+table.display tr.even.row_selected td {
+	background-color: #B0BED9;
+}
+
+table.display tr.odd.row_selected td {
+	background-color: #9FAFD1;
+}
+
+
+/*
+ * Sorting classes for columns
+ */
+/* For the standard odd/even */
+tr.odd td.sorting_1 {
+	background-color: #D3D6FF;
+}
+
+tr.odd td.sorting_2 {
+	background-color: #DADCFF;
+}
+
+tr.odd td.sorting_3 {
+	background-color: #E0E2FF;
+}
+
+tr.even td.sorting_1 {
+	background-color: #EAEBFF;
+}
+
+tr.even td.sorting_2 {
+	background-color: #F2F3FF;
+}
+
+tr.even td.sorting_3 {
+	background-color: #F9F9FF;
+}
+
+
+/* For the Conditional-CSS grading rows */
+/*
+ 	Colour calculations (based off the main row colours)
+  Level 1:
+		dd > c4
+		ee > d5
+	Level 2:
+	  dd > d1
+	  ee > e2
+ */
+tr.odd.gradeA td.sorting_1 {
+	background-color: #c4ffc4;
+}
+
+tr.odd.gradeA td.sorting_2 {
+	background-color: #d1ffd1;
+}
+
+tr.odd.gradeA td.sorting_3 {
+	background-color: #d1ffd1;
+}
+
+tr.even.gradeA td.sorting_1 {
+	background-color: #d5ffd5;
+}
+
+tr.even.gradeA td.sorting_2 {
+	background-color: #e2ffe2;
+}
+
+tr.even.gradeA td.sorting_3 {
+	background-color: #e2ffe2;
+}
+
+tr.odd.gradeC td.sorting_1 {
+	background-color: #c4c4ff;
+}
+
+tr.odd.gradeC td.sorting_2 {
+	background-color: #d1d1ff;
+}
+
+tr.odd.gradeC td.sorting_3 {
+	background-color: #d1d1ff;
+}
+
+tr.even.gradeC td.sorting_1 {
+	background-color: #d5d5ff;
+}
+
+tr.even.gradeC td.sorting_2 {
+	background-color: #e2e2ff;
+}
+
+tr.even.gradeC td.sorting_3 {
+	background-color: #e2e2ff;
+}
+
+tr.odd.gradeX td.sorting_1 {
+	background-color: #ffc4c4;
+}
+
+tr.odd.gradeX td.sorting_2 {
+	background-color: #ffd1d1;
+}
+
+tr.odd.gradeX td.sorting_3 {
+	background-color: #ffd1d1;
+}
+
+tr.even.gradeX td.sorting_1 {
+	background-color: #ffd5d5;
+}
+
+tr.even.gradeX td.sorting_2 {
+	background-color: #ffe2e2;
+}
+
+tr.even.gradeX td.sorting_3 {
+	background-color: #ffe2e2;
+}
+
+tr.odd.gradeU td.sorting_1 {
+	background-color: #c4c4c4;
+}
+
+tr.odd.gradeU td.sorting_2 {
+	background-color: #d1d1d1;
+}
+
+tr.odd.gradeU td.sorting_3 {
+	background-color: #d1d1d1;
+}
+
+tr.even.gradeU td.sorting_1 {
+	background-color: #d5d5d5;
+}
+
+tr.even.gradeU td.sorting_2 {
+	background-color: #e2e2e2;
+}
+
+tr.even.gradeU td.sorting_3 {
+	background-color: #e2e2e2;
+}
+
+
+/*
+ * Row highlighting example
+ */
+.ex_highlight #example tbody tr.even:hover, #example tbody tr.even td.highlighted {
+	background-color: #ECFFB3;
+}
+
+.ex_highlight #example tbody tr.odd:hover, #example tbody tr.odd td.highlighted {
+	background-color: #E6FF99;
+}
+</style>
+</style>
+
+</head>
+<body id="dt_example" style="background-color:#F3F0EB;">
+<table style="width:1000">
+	<tr>
+		<td colspan="2" style="font-weight:bold;text-align:center;padding-bottom:20px;"><div id="naslov">Financijski pogled - HUP</div></td>
+	</tr>
+	<tr>
+		<td style="font-weight:bold;text-align:center;padding-bottom:20px;"><div id="naslov">Udruga: <select id="udruge" name="udruge"  onchange="changeUdruga(this)"><option value="sve">Sve udruge</option></select></td>
+		<td style="font-weight:bold;text-align:center;padding-bottom:20px;"><div id="naslov">Voditelj: <select id="voditelji" name="voditelji"  onchange="changeVoditelj(this)"><option value="sve">Svi voditelji</option></select></div></td>
+	</tr>
+</table>	
+<table  style="width:1000">
+	<tr>
+		<td valign="top" style="border:0px;padding-bottom:20px;"><div id="chartArea" style="padding-right:10px;"></div></td>
+		<td valign="top" style="border:0px;padding-bottom:20px;"><div id="dugChart"></div></td>
+	</tr>
+
+	<tr>
+		<td colspan="2"><div id="companyList"></div></div></td>
+	</tr>
+	<tr>
+		<td colspan="2"><div id="debtList"></td>
+	</tr>
+	<tr>
+		<td colspan="2"><div id="dynamic"></td>
+	</tr>
+</table>
+</body>
+<html>
